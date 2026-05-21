@@ -217,8 +217,8 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 # ML Models
-*.pkl
-*.joblib
+#*.pkl - must include it once hackathon is over
+#*.joblib - must include it once hackathon is over
 
 # Dataset
 data/
