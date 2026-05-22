@@ -1,0 +1,11 @@
+[project]
+name = "showauth-backend"
+version = "0.1.0"
+description = "Behavioral biometric authentication backend"
+requires-python = ">=3.10"
+
+[tool.black]
+line-length = 88
+
+[tool.isort]
+profile = "black"
