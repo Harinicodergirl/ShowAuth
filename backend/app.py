@@ -152,7 +152,6 @@ def predict():
         "session_id": session_id,
         "rf_score": result["rf_score"],
         "xgb_score": result["xgb_score"],
-        "genuine_prob": result["genuine_prob"],
         "risk_score": result["final_score"],
         "prediction": result["prediction"],
         "features": feature_debug,
