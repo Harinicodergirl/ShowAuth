@@ -93,13 +93,41 @@ export default function useTracking() {
         }
     };
 
-    const buildPayload = () => {
-        return {
-            session_id: sessionIdRef.current,
-            key_events: [...keyEventsRef.current],
-            mouse_events: [...mouseEventsRef.current]
-        };
+const buildPayload = () => {
+    return {
+
+        session_id: sessionIdRef.current,
+
+        key_events: [...keyEventsRef.current],
+
+        mouse_events: [...mouseEventsRef.current],
+
+        transaction_data: {
+
+            transaction_id: crypto.randomUUID(),
+
+            sender_account: "ACC1001",
+
+            receiver_account: "ACC2002",
+
+            amount: 25000,
+
+            transaction_type: "UPI",
+
+            merchant_category: "electronics",
+
+            location: "Chennai",
+
+            device_used: navigator.userAgent,
+
+            payment_channel: "web",
+
+            ip_address: "192.168.1.10",
+
+            device_hash: "abc123xyz"
+        }
     };
+};
 
     const clearEvents = () => {
         keyEventsRef.current = [];

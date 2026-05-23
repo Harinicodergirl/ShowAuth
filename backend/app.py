@@ -1,13 +1,7 @@
 """
 app.py
 ------
-Flask API for behavioural authentication system (React-integrated version)
-
-Endpoints
----------
-POST /predict
-GET  /health
-GET  /features/schema
+Flask API for behavioural + transaction fraud detection system
 """
 
 from flask import Flask, request, jsonify
@@ -18,142 +12,126 @@ from predict import predict_risk
 
 import time
 
-app = Flask(__name__)
+from transaction_features import extract_transaction_features
 
-# 🔐 safer CORS (adjust in production)
+app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-
-# ── Feature schema ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# FEATURE SCHEMA
+# ─────────────────────────────────────────────
 FEATURE_SCHEMA = [
-    {"name": "mean_dwell",           "type": "float", "unit": "ms",    "source": "keyboard"},
-    {"name": "std_dwell",            "type": "float", "unit": "ms",    "source": "keyboard"},
-    {"name": "max_dwell",            "type": "float", "unit": "ms",    "source": "keyboard"},
-    {"name": "correction_count",     "type": "int",   "unit": "count", "source": "keyboard"},
-    {"name": "backspace_frequency",  "type": "float", "unit": "ratio", "source": "keyboard"},
-    {"name": "shift_usage",          "type": "float", "unit": "ratio", "source": "keyboard"},
-    {"name": "avg_velocity",         "type": "float", "unit": "px/s",  "source": "mouse"},
-    {"name": "acceleration",         "type": "float", "unit": "px/s²", "source": "mouse"},
-    {"name": "total_distance",       "type": "float", "unit": "px",    "source": "mouse"},
-    {"name": "click_count",          "type": "int",   "unit": "count", "source": "mouse"},
-    {"name": "hesitation",           "type": "int",   "unit": "count", "source": "mouse"},
-    {"name": "pauses",               "type": "int",   "unit": "count", "source": "mouse"},
-    {"name": "direction_changes",    "type": "int",   "unit": "count", "source": "mouse"},
+    {"name": "mean_dwell"},
+    {"name": "std_dwell"},
+    {"name": "max_dwell"},
+    {"name": "correction_count"},
+    {"name": "backspace_frequency"},
+    {"name": "shift_usage"},
+    {"name": "avg_velocity"},
+    {"name": "acceleration"},
+    {"name": "total_distance"},
+    {"name": "click_count"},
+    {"name": "hesitation"},
+    {"name": "pauses"},
+    {"name": "direction_changes"},
 ]
 
 
-# ── Health check ───────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# HEALTH CHECK
+# ─────────────────────────────────────────────
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
 
 
-# ── Schema endpoint ───────────────────────────────────────────────────────────
-@app.route("/features/schema", methods=["GET"])
-def feature_schema():
-    return jsonify({
-        "feature_count": len(FEATURE_SCHEMA),
-        "features": FEATURE_SCHEMA,
-    }), 200
-
-
-# ── Normalization layer (IMPORTANT) ───────────────────────────────────────────
+# ─────────────────────────────────────────────
+# NORMALIZATION
+# ─────────────────────────────────────────────
 def normalize_events(body):
-    """
-    Ensures backend never breaks due to frontend inconsistencies.
-    """
 
     body.setdefault("key_events", [])
     body.setdefault("mouse_events", [])
 
-    for e in body["key_events"]:
-        e.setdefault("key", "")
-        e.setdefault("event", "")
-        e.setdefault("epoch", 0)
-
-    for e in body["mouse_events"]:
-        e.setdefault("event", "")
-        e.setdefault("x", 0)
-        e.setdefault("y", 0)
-        e.setdefault("epoch", 0)
-
     return body
 
 
-# ── Predict endpoint ──────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# MAIN PREDICT ENDPOINT
+# ─────────────────────────────────────────────
 @app.route("/predict", methods=["POST"])
 def predict():
-    start_time = time.time()
 
+    start_time = time.time()
     body = request.get_json(silent=True)
 
-    # ── Basic validation ───────────────────────────────────────────────
-    if not body or not isinstance(body, dict):
-        return jsonify({
-            "status": "error",
-            "message": "Invalid or missing JSON body"
-        }), 400
+    # Validate request
+    if not body:
+        return jsonify({"status": "error", "message": "Invalid JSON"}), 400
 
-    required_fields = ["key_events", "mouse_events"]
+    if "key_events" not in body or "mouse_events" not in body:
+        return jsonify({"status": "error", "message": "Missing events"}), 422
 
-    for field in required_fields:
-        if field not in body:
-            return jsonify({
-                "status": "error",
-                "message": f"Missing field: {field}"
-            }), 422
+    # Optional transaction features (NEW)
+    transaction_features = body.get("transaction_features", None)
 
-    if not isinstance(body["key_events"], list) or not isinstance(body["mouse_events"], list):
-        return jsonify({
-            "status": "error",
-            "message": "key_events and mouse_events must be lists"
-        }), 422
-
-    # ── Optional session tracking (highly recommended) ────────────────
     session_id = body.get("session_id", None)
 
-    # ── Normalize input ────────────────────────────────────────────────
+    transaction_data = body.get(
+    "transaction_data",
+    {}
+)
+
+    # Normalize
     body = normalize_events(body)
 
-    # ── Feature extraction ─────────────────────────────────────────────
+    # Feature extraction
     try:
         feature_vector = extract_features(body)
-    except ValueError as e:
+
+        txn_feature_vector = extract_transaction_features(
+        transaction_data
+)
+    except Exception as e:
         return jsonify({
             "status": "error",
             "stage": "feature_extraction",
             "message": str(e)
-        }), 422
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "stage": "feature_extraction",
-            "message": f"Unexpected error: {str(e)}"
         }), 500
 
-    # ── Prediction ─────────────────────────────────────────────────────
+    # Prediction
     try:
-        result = predict_risk(feature_vector)
+        result = predict_risk(
+        feature_vector,
+        txn_feature_vector
+)
     except Exception as e:
         return jsonify({
             "status": "error",
             "stage": "prediction",
-            "message": f"Prediction failed: {str(e)}"
+            "message": str(e)
         }), 500
 
-    # ── Feature debug mapping ───────────────────────────────────────────
+    # Feature debug mapping
     feature_debug = {
         FEATURE_SCHEMA[i]["name"]: round(feature_vector[i], 4)
         for i in range(len(FEATURE_SCHEMA))
     }
 
+    # Response
     response = {
         "status": "success",
         "session_id": session_id,
+
         "rf_score": result["rf_score"],
         "xgb_score": result["xgb_score"],
+
+        "behavior_risk": result["behavior_risk"],
+        "transaction_risk": result["transaction_risk"],
+
         "risk_score": result["final_score"],
         "prediction": result["prediction"],
+
         "features": feature_debug,
         "latency_ms": round((time.time() - start_time) * 1000, 2)
     }
@@ -161,6 +139,8 @@ def predict():
     return jsonify(response), 200
 
 
-# ── Run server ────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# RUN SERVER
+# ─────────────────────────────────────────────
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
