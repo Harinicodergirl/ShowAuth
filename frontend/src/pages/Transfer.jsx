@@ -1,36 +1,80 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
+import useTracking from "../../tracking";
 
 const payees = [
-  { name: "Priya Mehta", account: "123456789012", label: "Priya M." },
-  { name: "Arjun Patel", account: "987654321098", label: "Arjun P." },
-  { name: "Sneha Reddy", account: "456789012345", label: "Sneha R." },
+  { name: "Priya Mehta",  account: "123456789012", label: "Priya M."  },
+  { name: "Arjun Patel",  account: "987654321098", label: "Arjun P."  },
+  { name: "Sneha Reddy",  account: "456789012345", label: "Sneha R."  },
   { name: "Vikram Singh", account: "789012345678", label: "Vikram S." },
 ];
 
 const amountPresets = ["500", "1000", "5000", "10000"];
 
 export default function Transfer() {
-  const [transferType, setTransferType] = useState("bank");
+  const navigate = useNavigate();
+
+  const [transferType,  setTransferType]  = useState("bank");
   const [recipientName, setRecipientName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
-  const [ifscCode, setIfscCode] = useState("");
-  const [amount, setAmount] = useState("");
-  const [description, setDescription] = useState("");
-  const [modalOpen, setModalOpen] = useState(false);
+  const [ifscCode,      setIfscCode]      = useState("");
+  const [amount,        setAmount]        = useState("");
+  const [description,   setDescription]  = useState("");
+  const [modalOpen,     setModalOpen]     = useState(false);
+  const [loading,       setLoading]       = useState(false);
+  const [error,         setError]         = useState("");
+
+  // Real transaction data from the form fields
+  // This gets passed into tracking so it's included in the /predict call
+  const transactionData = {
+    sender_account:    "ACC1001",
+    receiver_account:  accountNumber,
+    amount:            parseFloat(amount) || 0,
+    transaction_type:  transferType.toUpperCase(),
+    merchant_category: description || "other",
+  };
+
+  const { sendEvents } = useTracking(transactionData);
 
   function openModal() {
     if (!recipientName || !accountNumber || !amount) return;
     setModalOpen(true);
   }
 
-  function confirmTransfer() {
-    setModalOpen(false);
-    setRecipientName("");
-    setAccountNumber("");
-    setIfscCode("");
-    setAmount("");
-    setDescription("");
+  // CHANGED: now sends data to /predict and goes to /auth
+  async function confirmTransfer() {
+    setLoading(true);
+    setError("");
+    try {
+      const result = await sendEvents().catch(() => null);
+      setModalOpen(false);
+      navigate("/auth", {
+        state: {
+          prediction: result?.prediction ?? "Suspicious",
+          final_score:       result?.final_score       ?? 0.45,
+          behavior_risk:     result?.behavior_risk     ?? 0.4,
+          transaction_risk:  result?.transaction_risk  ?? 0.5,
+          rf_score:          result?.rf_score          ?? 0.4,
+          xgb_score:         result?.xgb_score         ?? 0.5,
+          amount,
+          recipientName,
+        }
+      });
+    } catch (e) {
+      // Backend is offline — still navigate with demo data so we can test UI
+      setModalOpen(false);
+      navigate("/auth", {
+        state: {
+          prediction: "Suspicious", final_score: 0.45,
+          behavior_risk: 0.4, transaction_risk: 0.5,
+          rf_score: 0.4, xgb_score: 0.5,
+          amount, recipientName,
+        }
+      });
+    } finally {
+      setLoading(false);
+    }
   }
 
   function selectPayee(payee) {
@@ -169,6 +213,7 @@ export default function Transfer() {
         </div>
       </div>
 
+      {/* Modal */}
       <div className={`modal-overlay ${modalOpen ? "open" : ""}`} id="transfer-modal">
         <div className="modal">
           <button
@@ -207,12 +252,15 @@ export default function Transfer() {
               </strong>
             </div>
           </div>
+          {error && (
+            <p style={{ color: "var(--danger)", fontSize: "13px", margin: "8px 0" }}>{error}</p>
+          )}
           <div className="modal-actions">
             <button type="button" className="btn-secondary" onClick={() => setModalOpen(false)}>
               Cancel
             </button>
-            <button type="button" className="btn-confirm" onClick={confirmTransfer}>
-              Confirm Transfer
+            <button type="button" className="btn-confirm" onClick={confirmTransfer} disabled={loading}>
+              {loading ? "Analyzing…" : "Confirm Transfer"}
             </button>
           </div>
         </div>
