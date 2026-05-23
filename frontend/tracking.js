@@ -165,7 +165,8 @@ const buildPayload = () => {
             clearEvents();
         }
         catch (error) {
-            console.error("Tracking send error:", error);
+            console.log("Backend offline — will retry later.");
+            return null;
         }
     };
 
