@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
+import { formatCurrency, getStoredUser } from "../auth";
 
 const transactions = [
   { id: "netflix", name: "Netflix", date: "May 20, 2026 • Entertainment", amount: "-₹499", type: "debit", letter: "N" },
@@ -25,29 +26,48 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [balanceHidden, setBalanceHidden] = useState(false);
   const [txTab, setTxTab] = useState("all");
-  const balance = "₹2,45,680.50";
+  const user = getStoredUser();
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const balance = formatCurrency(user.balance);
+  const lastTransaction = (() => {
+    try {
+      const raw = sessionStorage.getItem("last_transaction_result");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  })();
+  const riskStatus = lastTransaction?.prediction || "Low";
 
   return (
     <Layout>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Good morning, Rahul</h1>
+          <h1 className="page-title">Welcome {user.name}</h1>
           <p className="page-subtitle">Here&apos;s an overview of your accounts</p>
         </div>
         <button type="button" className="risk-badge" id="risk-badge">
           <span className="risk-dot safe" />
-          <span>Risk: Low</span>
+          <span>Risk: {riskStatus}</span>
         </button>
       </div>
 
       <div className="summary-strip">
         <button type="button" className="summary-item">
           <span className="summary-label">Savings</span>
-          <span className="summary-value">₹2,45,680</span>
+          <span className="summary-value">{formatCurrency(user.balance)}</span>
         </button>
         <button type="button" className="summary-item">
-          <span className="summary-label">Current</span>
-          <span className="summary-value">₹32,150</span>
+          <span className="summary-label">Fraud Risk</span>
+          <span className="summary-value">{riskStatus}</span>
+        </button>
+        <button type="button" className="summary-item">
+          <span className="summary-label">Transaction Result</span>
+          <span className="summary-value">{lastTransaction?.status || "No recent transfer"}</span>
         </button>
         <button type="button" className="summary-item">
           <span className="summary-label">Fixed Deposit</span>

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
+import { getStoredUser } from "./src/auth";
 
-export default function useTracking() {
+export default function useTracking(transactionData = {}) {
     const keyEventsRef = useRef([]);
     const mouseEventsRef = useRef([]);
 
@@ -94,9 +95,13 @@ export default function useTracking() {
     };
 
 const buildPayload = () => {
+    const user = getStoredUser();
+
     return {
 
         session_id: sessionIdRef.current,
+
+        username: user?.username || sessionStorage.getItem("shadowauth_user") || "guest",
 
         key_events: [...keyEventsRef.current],
 
@@ -124,7 +129,9 @@ const buildPayload = () => {
 
             ip_address: "192.168.1.10",
 
-            device_hash: "abc123xyz"
+            device_hash: "abc123xyz",
+
+            ...transactionData
         }
     };
 };
@@ -135,10 +142,11 @@ const buildPayload = () => {
         eventCountRef.current = 0;
     };
 
-    const sendEvents = async () => {
+    const sendEvents = async ({ force = false } = {}) => {
         const payload = buildPayload();
 
         if (
+            !force &&
             payload.key_events.length === 0 &&
             payload.mouse_events.length === 0
         ) {
@@ -163,6 +171,11 @@ const buildPayload = () => {
             console.log("Risk Analysis:", result);
 
             clearEvents();
+
+            return {
+                ...result,
+                session_id: payload.session_id
+            };
         }
         catch (error) {
             console.log("Backend offline — will retry later.");

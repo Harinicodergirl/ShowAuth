@@ -1,13 +1,34 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
+import { debitStoredBalance, getStoredUser } from "../auth";
+
+function markTransactionSuccessful(amount, recipientName) {
+  const updatedUser = debitStoredBalance(amount);
+  const previousResult = (() => {
+    try {
+      const raw = sessionStorage.getItem("last_transaction_result");
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  })();
+
+  sessionStorage.setItem("last_transaction_result", JSON.stringify({
+    ...previousResult,
+    status: "Successful",
+    amount,
+    recipientName,
+    balance: updatedUser?.balance,
+  }));
+}
 
 export default function AdaptiveAuth() {
   const location = useLocation();
   const state = location.state || {};
 
   const prediction       = state.prediction       ?? "Legitimate";
-  const final_score      = state.final_score       ?? 0;
+  const final_score      = state.final_score       ?? state.risk_score ?? 0;
   const behavior_risk    = state.behavior_risk     ?? 0;
   const transaction_risk = state.transaction_risk  ?? 0;
   const amount           = state.amount            ?? "0";
@@ -41,7 +62,7 @@ export default function AdaptiveAuth() {
 
       {/* Show different auth based on prediction */}
       {prediction === "Fraudulent" && <BlockScreen />}
-      {prediction === "Suspicious" && <SuspiciousAuth />}
+      {prediction === "Suspicious" && <SuspiciousAuth amount={amount} recipientName={recipientName} />}
       {prediction === "Legitimate" && <LegitimateAuth amount={amount} recipientName={recipientName} />}
     </Layout>
   );
@@ -52,7 +73,9 @@ function LegitimateAuth({ amount, recipientName }) {
   const navigate = useNavigate();
   const [mpin, setMpin]       = useState(["", "", "", "", "", ""]);
   const [error, setError]     = useState("");
+  const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const user = getStoredUser();
 
   function handlePin(i, val) {
     if (!/^\d?$/.test(val)) return;
@@ -62,13 +85,46 @@ function LegitimateAuth({ amount, recipientName }) {
     if (val && i < 5) document.getElementById(`mpin-${i + 1}`)?.focus();
   }
 
-  function verify() {
+  async function verify() {
+    const pin = mpin.join("");
+
     if (mpin.join("").length < 6) {
       setError("Please enter all 6 digits.");
       return;
     }
-    setSuccess(true);
-    setTimeout(() => navigate("/dashboard"), 2000);
+
+    if (!user?.username) {
+      navigate("/login");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch("http://localhost:5000/verify-mpin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: user.username,
+          mpin: pin,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data.verified) {
+        throw new Error(data.message || "Invalid transaction MPIN.");
+      }
+
+      markTransactionSuccessful(amount, recipientName);
+      setSuccess(true);
+      setTimeout(() => navigate("/dashboard"), 2000);
+    } catch (err) {
+      setError(err.message || "Unable to verify transaction MPIN.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (success) return <SuccessCard message="Transaction authorised successfully!" />;
@@ -108,8 +164,8 @@ function LegitimateAuth({ amount, recipientName }) {
 
         {error && <p style={errorStyle}>{error}</p>}
 
-        <button className="btn-primary" style={{ width: "100%", marginTop: "8px" }} onClick={verify}>
-          Authorise Transfer
+        <button className="btn-primary" style={{ width: "100%", marginTop: "8px" }} onClick={verify} disabled={loading}>
+          {loading ? "Verifying..." : "Authorise Transfer"}
         </button>
       </div>
     </div>
@@ -120,7 +176,7 @@ function LegitimateAuth({ amount, recipientName }) {
 const SECURITY_Q = "What was the name of your first pet?";
 const SECURITY_A = "tommy";
 
-function SuspiciousAuth() {
+function SuspiciousAuth({ amount, recipientName }) {
   const navigate = useNavigate();
   const [step,    setStep]    = useState(1);
   const [otp,     setOtp]     = useState(["", "", "", "", "", ""]);
@@ -150,6 +206,7 @@ function SuspiciousAuth() {
       setError("Incorrect answer. Please try again.");
       return;
     }
+    markTransactionSuccessful(amount, recipientName);
     setSuccess(true);
     setTimeout(() => navigate("/dashboard"), 2000);
   }

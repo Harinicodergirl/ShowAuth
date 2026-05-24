@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { clearStoredUser, getStoredUser } from "../auth";
 
 const notifications = [
   { id: 1, title: "Transfer completed", desc: "₹2,300 sent to Amazon Pay — 2h ago", unread: true },
@@ -10,6 +11,10 @@ const notifications = [
 export default function Navbar({ onMenuClick }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const user = getStoredUser();
+  const initials = user?.name
+    ? user.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()
+    : "SA";
 
   return (
     <>
@@ -61,8 +66,8 @@ export default function Navbar({ onMenuClick }) {
               id="profile-btn"
               onClick={() => setProfileOpen(!profileOpen)}
             >
-              <span className="profile-avatar">RS</span>
-              <span className="profile-name">Rahul Sharma</span>
+              <span className="profile-avatar">{initials}</span>
+              <span className="profile-name">{user?.name || "ShadowAuth User"}</span>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="6 9 12 15 18 9" />
               </svg>
@@ -70,7 +75,14 @@ export default function Navbar({ onMenuClick }) {
             <div className={`dropdown-menu ${profileOpen ? "open" : ""}`} id="profile-menu">
               <button type="button" className="dropdown-item">My Profile</button>
               <button type="button" className="dropdown-item">Settings</button>
-              <Link to="/login" className="dropdown-item" onClick={() => setProfileOpen(false)}>
+              <Link
+                to="/login"
+                className="dropdown-item"
+                onClick={() => {
+                  clearStoredUser();
+                  setProfileOpen(false);
+                }}
+              >
                 Logout
               </Link>
             </div>

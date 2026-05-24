@@ -1,17 +1,48 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { storeUser } from "../auth";
 
 export default function Login() {
   const navigate = useNavigate();
-  const [showPassword, setShowPassword] = useState(false);
   const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [mpin, setMpin] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  function handleLogin(e) {
+  async function handleLogin(e) {
     e.preventDefault();
-    if (!username.trim() || !password) return;
-    sessionStorage.setItem("shadowauth_user", username.trim());
-    navigate("/dashboard");
+    if (!username.trim() || mpin.length !== 4) {
+      setError("Enter your username and 4-digit MPIN.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch("http://localhost:5000/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: username.trim(),
+          mpin,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data.status !== "success" || !data.user) {
+        throw new Error(data.message || "Invalid username or MPIN.");
+      }
+
+      storeUser(data.user);
+      sessionStorage.setItem("shadowauth_user", data.user.username);
+      navigate("/dashboard");
+    } catch (err) {
+      setError(err.message || "Unable to login. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -53,24 +84,19 @@ export default function Login() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">Password</label>
+            <label htmlFor="mpin">4-digit MPIN</label>
             <div className="password-field">
               <input
-                type={showPassword ? "text" : "password"}
-                id="password"
-                name="password"
-                placeholder="Enter your password"
+                type="password"
+                id="mpin"
+                name="mpin"
+                placeholder="Enter MPIN"
                 autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                inputMode="numeric"
+                maxLength={4}
+                value={mpin}
+                onChange={(e) => setMpin(e.target.value.replace(/\D/g, "").slice(0, 4))}
               />
-              <button
-                type="button"
-                className="toggle-password"
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? "Hide" : "Show"}
-              </button>
             </div>
           </div>
 
@@ -84,8 +110,14 @@ export default function Login() {
             </button>
           </div>
 
-          <button type="submit" id="login-btn" className="btn-primary">
-            Sign In
+          {error && (
+            <p style={{ color: "var(--danger)", fontSize: "13px", margin: "0 0 12px" }}>
+              {error}
+            </p>
+          )}
+
+          <button type="submit" id="login-btn" className="btn-primary" disabled={loading}>
+            {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
 
