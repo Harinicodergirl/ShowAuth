@@ -149,5 +149,5 @@ final_score < 0.3   -> Legitimate
 
 ## Team / Event
 
-Built for CBI Hackathon 2026.
+Built for MNIT CBI Hackathon 2026.
 ```
